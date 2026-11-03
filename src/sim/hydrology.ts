@@ -358,7 +358,7 @@ function detectFeatures(
     if (s > 0.25) fordCand.push({ cell: i, s });
   }
   fordCand.sort((a, b) => b.s - a.s);
-  for (const f of nms(fordCand, W, 7, 60)) feats.push({ cell: f.cell, kind: 'ford', strength: f.s });
+  for (const f of nms(fordCand, W, 11, 28)) feats.push({ cell: f.cell, kind: 'ford', strength: f.s });
 
   // Mountain passes: saddle points on smoothed terrain.
   const sm = boxBlur(work, W, H, 2, 1);

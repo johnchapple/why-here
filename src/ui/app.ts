@@ -84,7 +84,7 @@ export class App {
     this.buildUI();
     this.bindInput();
     window.addEventListener('resize', () => { this.renderer.resize(); this.updateInsets(); });
-    if (window.innerWidth < 760) this.setPanelOpen(false);
+    if (this.isMobile) { this.setPanelOpen(false); this.el.legend.classList.add('collapsed'); }
   }
 
   // ------------------------------------------------------------------ UI build
@@ -171,7 +171,7 @@ export class App {
     tabs.appendChild(close);
     const panel = h('div', { class: 'panel parchment' }, tabs, this.panelBody);
     r.appendChild(panel);
-    const toggle = h('button', { class: 'btn panel-toggle', onclick: () => this.setPanelOpen(true) }, '☰ Panel');
+    const toggle = h('button', { class: 'btn panel-toggle', onclick: () => this.setPanelOpen(true) }, '☰ Guide');
     r.appendChild(toggle);
     Object.assign(this.el, { panel, panelToggle: toggle });
     this.setPanelOpen(true);
@@ -411,10 +411,12 @@ export class App {
   }
 
   // ------------------------------------------------------------------ panel
-  setTab(t: Tab) {
+  get isMobile() { return window.innerWidth < 760; }
+
+  setTab(t: Tab, open = !this.isMobile) {
     this.tab = t;
     for (const [id, b] of Object.entries(this.tabButtons)) b.classList.toggle('on', id === t);
-    if (!this.panelOpen) this.setPanelOpen(true);
+    if (open && !this.panelOpen) this.setPanelOpen(true);
     this.refreshPanel(true);
   }
 
@@ -531,7 +533,7 @@ export class App {
     }
     this.renderer.invalidate();
     this.mode?.onSelect?.(s);
-    if (s) this.setTab('inspect');
+    if (s) this.setTab('inspect', true);
     else if (this.tab === 'inspect') this.refreshPanel(true);
   }
 

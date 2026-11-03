@@ -1,10 +1,10 @@
 // Thematic overlays rendered as small rasters at grid resolution.
 import type { World } from '../sim/grid';
-import { smoothstep } from '../sim/grid';
 import type { SimSnapshot } from '../sim/types';
 import { hash2 } from '../sim/rng';
+import { ERAS } from '../sim/eras';
 
-export type OverlayKind = 'none' | 'elevation' | 'fertility' | 'cost' | 'catchments' | 'trade' | 'roads' | 'eras' | 'sites';
+export type OverlayKind = 'none' | 'elevation' | 'fertility' | 'cost' | 'catchments' | 'farms' | 'trade' | 'roads' | 'eras' | 'sites';
 
 export const OVERLAYS: { id: OverlayKind; label: string; hint: string }[] = [
   { id: 'none', label: 'Plain map', hint: 'The atlas without thematic shading.' },
@@ -12,6 +12,7 @@ export const OVERLAYS: { id: OverlayKind; label: string; hint: string }[] = [
   { id: 'elevation', label: 'Elevation', hint: 'Hypsometric tint: green lowlands to brown mountains.' },
   { id: 'fertility', label: 'Fertility', hint: 'Farm productivity from climate, slope, soil and river water.' },
   { id: 'cost', label: 'Movement cost', hint: 'How hard it is to cross each cell in the current era (darker = harder). Roads, rivers and the sea are the cheap highways.' },
+  { id: 'farms', label: 'Village fields', hint: 'The farmland each village works — all within about a day’s round-trip walk (the “ten-mile rule”).' },
   { id: 'catchments', label: 'Market areas', hint: 'Each colour is the hinterland served by one market town (central places).' },
   { id: 'trade', label: 'Trade flows', hint: 'Gravity-model trade between towns. Red = overland, blue = by water. Width = volume.' },
   { id: 'roads', label: 'Roads', hint: 'Roads emerge where traffic is heavy; they make travel cheaper, which attracts more traffic.' },
@@ -35,7 +36,7 @@ function ramp(stops: Ramp, t: number): [number, number, number] {
 
 const ELEV: Ramp = [[0, 92, 140, 80], [0.08, 150, 180, 100], [0.22, 220, 210, 130], [0.45, 190, 140, 80], [0.7, 140, 95, 60], [1, 245, 240, 235]];
 const FERT: Ramp = [[0, 220, 200, 160], [0.3, 200, 210, 120], [0.6, 120, 170, 60], [1, 30, 110, 30]];
-const COST: Ramp = [[0, 255, 250, 220], [0.3, 240, 190, 110], [0.6, 200, 90, 50], [1, 70, 20, 30]];
+const COST: Ramp = [[0, 255, 253, 240], [0.25, 250, 225, 160], [0.45, 235, 170, 95], [0.7, 190, 80, 45], [1, 70, 20, 30]];
 
 export function buildOverlay(kind: OverlayKind, w: World, snap: SimSnapshot | null): HTMLCanvasElement | null {
   if (kind === 'none' || kind === 'trade' || kind === 'roads' || kind === 'sites') return null;
@@ -50,29 +51,30 @@ export function buildOverlay(kind: OverlayKind, w: World, snap: SimSnapshot | nu
     const o = i * 4;
     let rgb: [number, number, number] | null = null;
     let a = 255;
-    if (w.water[i]) { d[o + 3] = 0; continue; }
+    if (w.water[i] && kind !== 'cost') { d[o + 3] = 0; continue; }
     switch (kind) {
       case 'elevation': rgb = ramp(ELEV, Math.pow(Math.max(0, w.elev[i]) / 3200, 0.6)); break;
       case 'fertility': rgb = ramp(FERT, w.fertility[i]); break;
       case 'cost': {
         const cf = snap?.costField;
-        const v = cf ? cf[i] : 1 + w.slope[i] * 30;
-        rgb = ramp(COST, smoothstep(0, 1, Math.log2(Math.max(0.05, v) / 0.08) / 6));
+        const land = ERAS[snap?.era ?? 0].land;
+        const v = cf ? cf[i] : land * (1 + w.slope[i] * 30);
+        rgb = ramp(COST, 0.42 + Math.log2(Math.max(0.01, v) / land) / 3.2);
+        break;
+      }
+      case 'farms': {
+        const f = snap?.catchment[i] ?? -1;
+        if (f < 0) { a = 0; rgb = [0, 0, 0]; break; }
+        rgb = hslToRgb(hash2(f, 3, 9) * 0.25 + 0.15, 0.55, 0.62);
+        a = 120 + Math.round(w.fertility[i] * 135);
         break;
       }
       case 'catchments': {
         const m = snap?.marketOf[i] ?? -1;
         if (m < 0) { a = 0; rgb = [0, 0, 0]; break; }
         const h = hash2(m, 7, 3);
-        rgb = hslToRgb(h, 0.55, 0.6);
-        // farm catchment edges: darken cells on farm boundaries
-        const f = snap!.catchment[i];
-        const x = i % W, y = (i / W) | 0;
-        const edge = (x > 0 && snap!.catchment[i - 1] !== f) || (y > 0 && snap!.catchment[i - W] !== f);
-        if (f < 0) { rgb = [rgb[0] * 0.9 + 25, rgb[1] * 0.9 + 25, rgb[2] * 0.9 + 25]; a = 120; }
-        if (edge && f >= 0) rgb = [rgb[0] * 0.7, rgb[1] * 0.7, rgb[2] * 0.7];
-        const mEdge = (x > 0 && snap!.marketOf[i - 1] !== m) || (y > 0 && snap!.marketOf[i - W] !== m);
-        if (mEdge) rgb = [60, 30, 20];
+        rgb = hslToRgb(h, 0.5, 0.58);
+        if ((snap?.catchment[i] ?? -1) < 0) a = 150; // not farmed yet
         break;
       }
     }

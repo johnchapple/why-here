@@ -107,24 +107,34 @@ export class Sim {
   /** Re-attach to an edited world while keeping as much history as possible. */
   rebind(w: World) {
     const old = this.settlements;
-    const year = this.year, era = this.era, events = this.events, roads = this.infra.roads;
+    const keep = {
+      year: this.year, era: this.era, autoEra: this.autoEra, steps: this.steps, events: this.events,
+      infra: this.infra, edgeTraffic: this.edgeTraffic, traffic: this.traffic, shipping: this.shipping,
+      transfer: this.transfer, capitalId: this.capitalId, largestId: this.largestId, railBuilt: this.railBuilt, names: this.names,
+    };
     const fresh = new Sim(w, this.seed);
-    Object.assign(this, fresh);
-    this.year = year; this.era = era; this.events = events;
-    this.infra.roads = roads.length === w.N ? roads : this.infra.roads;
-    // keep settlements that are still on dry land
+    Object.assign(this, fresh, keep);
+    this.pf = new Pathfinder(w);
+    this.catchPf = new Pathfinder(w);
+    // keep every settlement; drowned ones are abandoned
     this.settlements = [];
     this.owner.fill(-1); this.ownerCost.fill(Infinity); this.cellOwnerS.fill(-1);
     for (const s of old) {
-      if (w.water[s.cell]) { s.abandoned = true; }
       const ns: Settlement = { ...s, id: this.settlements.length };
+      if (w.water[ns.cell] && !ns.abandoned) {
+        ns.abandoned = true;
+        this.log(this.year, `${ns.name} is drowned by the rising water and abandoned.`, ns.id, 'decline');
+      }
       this.settlements.push(ns);
       if (!ns.abandoned) { this.cellOwnerS[ns.cell] = ns.id; this.claim(ns); }
     }
-    this.capitalId = this.settlements.findIndex((s) => s.capital);
+    // infrastructure on new water is lost
+    for (let i = 0; i < w.N; i++) if (w.water[i]) { this.infra.roads[i] = 0; this.infra.rail[i] = 0; this.infra.canal[i] = 0; }
     this.costDirty = true;
     this.refreshCosts();
+    this.growRural();
     this.updateMarkets(true);
+    this.updateTrade();
     this.updatePopulations();
   }
 
@@ -358,9 +368,9 @@ export class Sim {
       s.ruralCap = caps[s.id];
       const r = Math.max(s.ruralPop, 30);
       s.ruralPop = Math.max(0, r + 0.32 * r * (1 - r / Math.max(1, s.ruralCap)));
-      if (s.ruralCap < 5 && s.origin === 'farming' && !s.market) {
+      if (this.w.water[s.cell] || (s.ruralCap < 5 && s.origin === 'farming' && !s.market && this.farmPot[s.cell] < 0.02)) {
         s.abandoned = true;
-        this.log(this.year, `${s.name} is abandoned: its fields are gone.`, s.id, 'decline');
+        this.log(this.year, this.w.water[s.cell] ? `${s.name} is drowned and abandoned.` : `${s.name} is abandoned: its fields are gone.`, s.id, 'decline');
       }
     }
   }

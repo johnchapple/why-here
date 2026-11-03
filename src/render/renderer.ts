@@ -8,7 +8,7 @@
 import type { World } from '../sim/grid';
 import type { SimSnapshot, Settlement } from '../sim/types';
 import { Basemap, bakeBasemap } from './basemap';
-import { chaikin } from './contours';
+import { chaikin, marchingSquares } from './contours';
 import { FONT_SC, FONT_SERIF, INK, LABEL_HALO, RAIL_INK, RIVER_INK, ROAD_INK } from './style';
 import { OverlayKind, buildOverlay } from './overlays';
 
@@ -88,8 +88,12 @@ export class Renderer {
     this.invalidate();
   }
 
+  borderPath: Path2D | null = null;
+
   rebuildOverlay() {
     this.overlayCanvas = this.world ? buildOverlay(this.overlay, this.world, this.snap) : null;
+    this.borderPath = (this.overlay === 'catchments' || this.overlay === 'farms') && this.world && this.snap
+      ? marketBorders(this.world.W, this.world.H, this.overlay === 'farms' ? this.snap.catchment : this.snap.marketOf) : null;
   }
 
   /** Screen insets (px) covered by UI panels: left, top, right, bottom. */
@@ -227,11 +231,16 @@ export class Renderer {
     ctx.drawImage(b.raster, 0, 0, w.W, w.H);
 
     if (this.overlayCanvas) {
-      ctx.globalAlpha = this.overlay === 'catchments' ? 0.55 : 0.72;
-      ctx.imageSmoothingEnabled = this.overlay !== 'catchments';
+      ctx.globalAlpha = this.overlay === 'catchments' ? 0.5 : 0.72;
       ctx.drawImage(this.overlayCanvas, 0, 0, w.W, w.H);
       ctx.globalAlpha = 1;
-      ctx.imageSmoothingEnabled = true;
+    }
+    if (this.borderPath) {
+      ctx.strokeStyle = this.overlay === 'farms' ? 'rgba(90,60,20,0.6)' : 'rgba(90,40,20,0.85)';
+      ctx.lineWidth = (this.overlay === 'farms' ? 0.8 : 1.3) * px;
+      ctx.setLineDash([4 * px, 2 * px]);
+      ctx.stroke(this.borderPath);
+      ctx.setLineDash([]);
     }
 
     // view bounds in cell units for culling
@@ -689,4 +698,27 @@ export function drawResourceIcon(ctx: CanvasRenderingContext2D, kind: string, x:
   const letter: Record<string, string> = { ore: 'Fe', coal: 'C', salt: 'S', stone: 'St', timber: 'T', gold: 'Au' };
   ctx.fillText(letter[kind] ?? '?', 0, kind === 'timber' ? 1.5 : 0.5);
   ctx.restore();
+}
+
+/** Smooth inked borders between market areas (marching squares per market). */
+function marketBorders(W: number, H: number, marketOf: Int32Array): Path2D {
+  const ids = new Set<number>();
+  for (let i = 0; i < marketOf.length; i++) if (marketOf[i] >= 0) ids.add(marketOf[i]);
+  const p = new Path2D();
+  const f = new Float32Array(W * H);
+  for (const id of ids) {
+    let x0 = W, x1 = 0, y0 = H, y1 = 0;
+    for (let i = 0; i < marketOf.length; i++) {
+      const v = marketOf[i] === id ? 1 : 0;
+      f[i] = v;
+      if (v) { const x = i % W, y = (i / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    // only the bounding box matters, but marchingSquares works on the full grid; fine for ~100 markets
+    for (const l of marchingSquares(f, W, H, 0.5)) {
+      const sm = chaikin(l, 2);
+      p.moveTo(sm[0], sm[1]);
+      for (let j = 2; j < sm.length; j += 2) p.lineTo(sm[j], sm[j + 1]);
+    }
+  }
+  return p;
 }
