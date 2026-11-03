@@ -1,0 +1,15 @@
+import { generateTerrain, DEFAULT_GEN } from '../src/sim/terrain';
+import { buildWorld } from '../src/sim/world';
+import { Sim } from '../src/sim/emergence';
+const t = generateTerrain({ ...DEFAULT_GEN, seed: 'atlas' });
+const w = buildWorld(t, 1);
+const sim = new Sim(w, 1);
+for (let k=0;k<9;k++) sim.step();
+sim.updateMarkets(false);
+console.log('markets', sim.settlements.filter(s=>s.market).map(s=>s.name));
+const pf = sim.pf;
+let t0 = performance.now();
+const s = sim.settlements[0];
+let pops = 0; const h = pf.heap as any; const op = h.pop.bind(h); h.pop = () => { pops++; if (pops % 1000000 === 0) console.log('pops', pops, h.size, h.lastKey); return op(); };
+const r = pf.run(sim.cm, [{node: s.cell}]);
+console.log('dijkstra', performance.now()-t0, pops);

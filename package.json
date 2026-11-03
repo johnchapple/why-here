@@ -1,0 +1,26 @@
+{
+  "name": "why-here",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A settlement-emergence sandbox: shape the land, watch towns emerge, ask 'Why here?'",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "regions": "node scripts/build-regions.mjs"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@fontsource/im-fell-english": "^5.3.0",
+    "@fontsource/im-fell-english-sc": "^5.3.0"
+  }
+}

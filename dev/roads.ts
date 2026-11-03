@@ -1,0 +1,15 @@
+import { generateTerrain, DEFAULT_GEN } from '../src/sim/terrain';
+import { buildWorld } from '../src/sim/world';
+import { Sim } from '../src/sim/emergence';
+import { hashString } from '../src/sim/rng';
+const t = generateTerrain({ ...DEFAULT_GEN, seed: 'atlas' });
+const w = buildWorld(t, hashString('atlas'));
+const sim = new Sim(w, hashString('atlas'));
+while (sim.year < 800) sim.advance(10);
+const e = sim.roadEdges();
+const c=[0,0,0,0]; for (let k=2;k<e.length;k+=3) c[e[k]]++;
+console.log('edges by level', c, 'edgeTraffic size', sim.edgeTraffic.size);
+const vals=[...sim.edgeTraffic.values()].sort((a,b)=>b-a); console.log(vals.slice(0,5), vals[Math.floor(vals.length/2)], vals.length);
+const live = sim.settlements.filter(s=>!s.abandoned);
+console.log('served', live.filter(s=>s.servedBy>=0).length, '/', live.length, 'mp null?', sim.marketDist===null);
+const rur = live.map(s=>s.ruralPop).sort((a,b)=>a-b); console.log('rural median', rur[rur.length>>1]);
