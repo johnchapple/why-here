@@ -4,6 +4,7 @@ import '@fontsource/im-fell-english-sc/400.css';
 import './styles.css';
 import { App } from './ui/app';
 import { sandboxMode, START_PARAMS } from './ui/sandbox';
+import { scenarioMode } from './ui/scenarios';
 
 async function main() {
   const app = new App(document.getElementById('app')!);
@@ -13,6 +14,10 @@ async function main() {
       app.editingAllowed = true;
       app.setMode(sandboxMode(app));
       if (!app.world || app.mode?.id !== 'sandbox') await app.generate(app.genParams);
+    },
+    scenario: () => {
+      app.pause();
+      app.setMode(scenarioMode(app));
     },
   };
   app.onModeChange = (id) => { void modes[id]?.(); };

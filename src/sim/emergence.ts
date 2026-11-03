@@ -1069,11 +1069,12 @@ export class Sim {
       for (const k of Object.keys(comps) as (keyof typeof comps)[]) {
         s.growth[k] = a > 0 && sums[k] > 0 ? urban * (era.weights[k] * comps[k][s.id] / sums[k]) / a : 0;
       }
-      const newTier = tierOf(s.pop);
+      // farm families live spread over the fields: a place's rank comes from its built-up core
+      const newTier = tierOf(s.pop - 0.75 * s.ruralPop);
       if (newTier > s.tier && s.pop > s.peakPop) {
         if (newTier >= 3 || (newTier === 2 && (s.market || s.origin !== 'farming'))) this.log(this.year, `${s.name} grows into a ${TIER_NAME[newTier]} of ${roundPop(s.pop)}.`, s.id, 'grow');
         s.tier = newTier;
-      } else if (newTier < s.tier && s.pop < TIER_POP[s.tier] * 0.85) {
+      } else if (newTier < s.tier && s.pop - 0.75 * s.ruralPop < TIER_POP[s.tier] * 0.85) {
         s.tier = newTier;
       }
       if (s.peakPop >= 4000 && s.pop < s.peakPop * 0.6 && !s.history.some((h) => h.kind === 'decline' && h.year > this.year - 150)) {

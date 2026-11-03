@@ -24,6 +24,7 @@ export interface ModeController {
   onTool?(tool: Tool): void;
   onOverlay?(o: OverlayKind): void;
   onSelect?(s: Settlement | null): void;
+  onTab?(t: Tab): void;
   leave?(): void;
 }
 
@@ -418,6 +419,7 @@ export class App {
     for (const [id, b] of Object.entries(this.tabButtons)) b.classList.toggle('on', id === t);
     if (open && !this.panelOpen) this.setPanelOpen(true);
     this.refreshPanel(true);
+    this.mode?.onTab?.(t);
   }
 
   refreshPanel(force: boolean) {
