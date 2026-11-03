@@ -508,8 +508,9 @@ export class Renderer {
     const ctx = this.ctx;
     const [sx, sy] = this.worldToScreen(s.x, s.y);
     const r = this.iconRadius(s);
-    const size = (rank < 3 ? 19 : rank < 10 ? 15.5 : rank < 25 ? 13 : 11.5) + (s.capital ? 1.5 : 0);
-    const big = rank < 10 || s.capital;
+    const bySize = [11, 11.5, 13, 15.5, 19][s.tier];
+    const size = Math.min(bySize, rank < 3 ? 19 : rank < 10 ? 15.5 : rank < 25 ? 13 : 11.5) + (s.capital ? 1.5 : 0);
+    const big = (rank < 10 && s.tier >= 2) || s.capital;
     const name = big ? s.name.toUpperCase() : s.name;
     ctx.font = `${big ? '' : 'italic '}${size}px ${big ? FONT_SC : FONT_SERIF}`;
     const tw = ctx.measureText(name).width + (big ? name.length * 0.8 : 0);
@@ -598,6 +599,9 @@ export class Renderer {
 
   private drawRealCities() {
     const ctx = this.ctx;
+    const sorted = [...this.realCities].sort((a, b) => b.pop - a.pop);
+    const labelBudget = Math.round(6 + this.cam.zoom * this.cam.zoom);
+    sorted.forEach((c, i) => { c.rank = i; });
     for (const c of this.realCities) {
       const [sx, sy] = this.worldToScreen(c.x, c.y);
       if (sx < -20 || sy < -20 || sx > this.viewW + 20 || sy > this.viewH + 20) continue;
@@ -608,6 +612,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.rect(sx - r, sy - r, r * 2, r * 2);
       ctx.fill(); ctx.stroke();
+      if (c.rank >= labelBudget) continue;
       ctx.font = `bold 11px ${FONT_SERIF}`;
       ctx.textAlign = 'left';
       ctx.strokeStyle = 'rgba(255,255,255,0.85)';

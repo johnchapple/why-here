@@ -36,8 +36,10 @@ export interface TerrainInput {
   inflow?: { cell: number; q: number }[];
   /** multiply computed precipitation (Earth mode calibration) */
   precipScale?: number;
+  /** replace the zonal precipitation baseline with a regional average (mm/yr) */
+  precipBase?: number;
   /** 'west' = prevailing westerlies (wind blows toward +x). Defaults by latitude. */
-  wind?: 'west' | 'east' | 'auto';
+  wind?: 'west' | 'east' | 'auto' | 'none';
   resources?: ResourceSite[];
 }
 

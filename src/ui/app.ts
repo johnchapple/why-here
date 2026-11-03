@@ -731,7 +731,7 @@ export class App {
       h('p', {}, h('b', {}, 'Trade & roads. '), 'Towns trade in proportion to size × size ÷ cost² (a gravity model), along the cheapest routes over land, river and sea. Busy routes become roads, roads make routes cheaper, and traffic piles onto them: path dependence.'),
       h('p', {}, h('b', {}, 'Break of bulk. '), 'Loading and unloading cargo is costly, so the places where goods must switch between boat and cart — river mouths, falls, harbours — grow into ports.'),
       h('p', {}, h('b', {}, 'Eras. '), 'Each era changes the costs of moving and what makes towns grow: markets first, then trade and ports, then railways and industry, then highways.'),
-      h('p', { class: 'explain' }, 'Controls: drag to pan, wheel or pinch to zoom, click a town. Space = play/pause.'),
+      h('p', { class: 'explain' }, 'Controls: drag to pan, wheel or pinch to zoom, click a town. Space = play/pause. Full model notes and sources are in the README on GitHub.'),
       h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => close() }, 'Back to the map')),
     ]);
   }

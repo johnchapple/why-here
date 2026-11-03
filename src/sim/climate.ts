@@ -32,35 +32,42 @@ export function computeClimate(t: TerrainInput, water: Uint8Array): Climate {
   else if (t.wind === 'east') windFromWest = false;
   else windFromWest = Math.abs(latMid) >= 30; // westerlies vs trade winds
 
-  // Moisture advection along rows in the wind direction.
+  // Moisture advection along rows in the wind direction. Uplift is measured
+  // on smoothed terrain: only real mountain ranges wring the air out.
   const stepKm = cellKm;
+  const relief = new Float32Array(N);
+  for (let i = 0; i < N; i++) relief[i] = Math.max(0, elev[i]);
+  const smooth = boxBlur(relief, W, H, Math.max(2, Math.round(15 / cellKm)), 2);
   for (let y = 0; y < H; y++) {
     const lat = latitudeOfRow(t, y);
-    const base = zonalPrecip(lat);
-    let m = 0.85; // incoming air moisture
+    const base = t.precipBase ?? zonalPrecip(lat);
+    let m = t.precipBase ? 1 : 0.85; // incoming air moisture
     for (let s = 0; s < W; s++) {
       const x = windFromWest ? s : W - 1 - s;
       const i = y * W + x;
       const e = Math.max(0, elev[i]);
-      temp[i] = seaLevelTemp(lat) - 0.0065 * e;
+      temp[i] = seaLevelTemp(lat) - 0.0055 * e; // observed near-surface lapse rate
       if (water[i]) {
         m += (1 - m) * Math.min(1, 0.05 * stepKm); // recharge over water
         precip[i] = base * m;
         continue;
       }
       const px = windFromWest ? x - 1 : x + 1;
-      const prev = px >= 0 && px < W ? Math.max(0, elev[y * W + px]) : e;
-      const uplift = Math.max(0, e - prev) / (stepKm * 1000); // gradient
+      const se = smooth[i];
+      const prev = px >= 0 && px < W ? smooth[y * W + px] : se;
+      const uplift = Math.max(0, se - prev) / (stepKm * 1000); // gradient
       const oro = Math.min(3, uplift * 260);
-      const rain = base * m * (0.85 + oro);
+      const rain = base * m * (t.wind === 'none' ? 0.9 + oro * 0.4 : 0.85 + oro);
       precip[i] = rain;
       // Moisture loss: gentle decay inland + strong loss on windward slopes.
-      const loss = 0.0007 * stepKm + oro * 0.045;
+      // with a measured regional baseline only mountains should dry the air much
+      if (t.wind === 'none') continue; // moisture from all sides: no depletion
+      const loss = (t.precipBase ? 0.00012 : 0.0007) * stepKm + oro * 0.045;
       // evapotranspiration recycles some moisture back into the air mass
-      m = clamp(m * (1 - loss) + 0.00035 * stepKm, 0.22, 1);
+      m = clamp(m * (1 - loss) + (t.precipBase ? 0.0004 : 0.00035) * stepKm, 0.22, 1);
     }
   }
-  const p2 = boxBlur(precip, W, H, Math.max(1, Math.round(6 / cellKm)), 2);
+  const p2 = boxBlur(precip, W, H, Math.max(1, Math.round(14 / cellKm)), 2);
   const scale = t.precipScale ?? 1;
   for (let i = 0; i < N; i++) precip[i] = Math.max(5, p2[i] * scale);
   return { temp, precip };

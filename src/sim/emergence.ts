@@ -92,7 +92,10 @@ export class Sim {
     this.pf = new Pathfinder(w);
     this.catchPf = new Pathfinder(w);
     // ten-mile rule: farmland within ~8 km (a 16 km round trip on foot)
-    this.Rcells = Math.max(2, Math.round(8 / w.cellKm));
+    // (on very large maps each village stands for a cluster of real ones, keeping the count manageable)
+    let landCells = 0;
+    for (let i = 0; i < N; i++) if (!w.water[i]) landCells++;
+    this.Rcells = Math.max(2, Math.round(8 / w.cellKm), Math.ceil(Math.sqrt(landCells / 1400 / Math.PI) / 0.9));
     this.farmPot = new Float32Array(N);
     this.siteBase = new Float32Array(N);
     this.computeSitePotential();
@@ -182,20 +185,26 @@ export class Sim {
   private computeSitePotential() {
     const { W, H, N, fertility, water } = this.w;
     const R = this.Rcells;
-    // disk sum via summed-area table (square approx is fine for ranking)
+    // fertility within a day's walk (summed-area tables; square approximation).
+    // Averaged over LAND only: a shore village farms the land side and fishes
+    // or trades on the water side, so water only mildly lowers the score.
     const sat = new Float64Array((W + 1) * (H + 1));
+    const lat = new Float64Array((W + 1) * (H + 1));
     for (let y = 0; y < H; y++) {
-      let row = 0;
+      let row = 0, lrow = 0;
       for (let x = 0; x < W; x++) {
-        row += water[y * W + x] ? 0 : fertility[y * W + x];
+        const i = y * W + x;
+        row += water[i] ? 0 : fertility[i];
+        lrow += water[i] ? 0 : 1;
         sat[(y + 1) * (W + 1) + x + 1] = sat[y * (W + 1) + x + 1] + row;
+        lat[(y + 1) * (W + 1) + x + 1] = lat[y * (W + 1) + x + 1] + lrow;
       }
     }
-    const area = (2 * R + 1) * (2 * R + 1);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const x0 = Math.max(0, x - R), x1 = Math.min(W, x + R + 1), y0 = Math.max(0, y - R), y1 = Math.min(H, y + R + 1);
-      const s = sat[y1 * (W + 1) + x1] - sat[y0 * (W + 1) + x1] - sat[y1 * (W + 1) + x0] + sat[y0 * (W + 1) + x0];
-      this.farmPot[y * W + x] = s / area;
+      const box = (t: Float64Array) => t[y1 * (W + 1) + x1] - t[y0 * (W + 1) + x1] - t[y1 * (W + 1) + x0] + t[y0 * (W + 1) + x0];
+      const landN = box(lat), area = (x1 - x0) * (y1 - y0);
+      this.farmPot[y * W + x] = landN > 0 ? (box(sat) / landN) * Math.sqrt(landN / area) : 0;
     }
     for (let i = 0; i < N; i++) this.siteBase[i] = water[i] ? 0 : this.evalSite(i).score;
   }
@@ -282,6 +291,14 @@ export class Sim {
     const src: number[] = [];
     for (let x = 0; x < W; x += 2) { if (water[x] === WATER_OCEAN) src.push(x); if (water[(H - 1) * W + x] === WATER_OCEAN) src.push((H - 1) * W + x); }
     for (let y = 0; y < H; y += 2) { if (water[y * W] === WATER_OCEAN) src.push(y * W); if (water[y * W + W - 1] === WATER_OCEAN) src.push(y * W + W - 1); }
+    // big rivers that leave or enter the map are gateways to the wider world too
+    const { flowDir, navigable, discharge, qNav } = this.w;
+    for (let i = 0; i < this.w.N; i++) {
+      if (water[i] || !navigable[i] || discharge[i] < qNav * 3) continue;
+      const x = i % W, y = (i / W) | 0;
+      const edge = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+      if (edge && (flowDir[i] === -2 || (this.w.inflow ?? []).some((f) => Math.hypot((f.cell % W) - x, ((f.cell / W) | 0) - y) < 3))) src.push(i);
+    }
     this.overseasSources = src;
   }
 
@@ -343,10 +360,13 @@ export class Sim {
     for (let i = 0; i < N; i++) if (this.siteBase[i] > 0) cands.push(i);
     cands.sort((a, b) => this.siteBase[b] - this.siteBase[a]);
     const picked: number[] = [];
-    const target = Math.max(3, Math.round((N / (320 * 224)) * 5));
+    let land = 0;
+    for (let i = 0; i < N; i++) if (!this.w.water[i]) land++;
+    const landKm2 = land * this.w.cellKm * this.w.cellKm;
+    const target = Math.max(3, Math.round(landKm2 / 14000));
     for (const c of cands) {
       const cx = c % W, cy = (c / W) | 0;
-      if (picked.some((p) => Math.hypot((p % W) - cx, ((p / W) | 0) - cy) < this.Rcells * 10)) continue;
+      if (picked.some((p) => Math.hypot((p % W) - cx, ((p / W) | 0) - cy) * this.w.cellKm < 90)) continue;
       picked.push(c);
       const e = this.evalSite(c);
       this.newSettlement(c, 'farming', e.factors, e.facts, e.hint, ', among the first farmers on the land');
@@ -370,6 +390,7 @@ export class Sim {
       s.ruralPop = Math.max(0, r + 0.32 * r * (1 - r / Math.max(1, s.ruralCap)));
       if (this.w.water[s.cell] || (s.ruralCap < 5 && s.origin === 'farming' && !s.market && this.farmPot[s.cell] < 0.02)) {
         s.abandoned = true;
+        if (this.cellOwnerS[s.cell] === s.id) this.cellOwnerS[s.cell] = -1;
         this.log(this.year, this.w.water[s.cell] ? `${s.name} is drowned and abandoned.` : `${s.name} is abandoned: its fields are gone.`, s.id, 'decline');
       }
     }
@@ -577,7 +598,14 @@ export class Sim {
     const { N, W } = w;
     const era = this.eraDef;
     const live = this.settlements.filter((s) => !s.abandoned);
-    const nodes = live.filter((s) => s.market || s.origin !== 'farming').sort((a, b) => b.pop - a.pop).slice(0, 15);
+    // trade nodes: the biggest places, at most one per urban region
+    const nodes: Settlement[] = [];
+    const minSep = Math.max(45, 8 * w.cellKm) / w.cellKm;
+    for (const s of live.filter((x) => x.market || x.origin !== 'farming').sort((a, b) => b.pop - a.pop)) {
+      if (nodes.some((n) => Math.hypot(n.x - s.x, n.y - s.y) < minSep)) continue;
+      nodes.push(s);
+      if (nodes.length >= 15) break;
+    }
     const newTraffic = new Float32Array(N);
     const newShip = new Float32Array(N);
     const newTransfer = new Float32Array(N);
@@ -586,7 +614,8 @@ export class Sim {
     for (const s of live) stats.set(s.id, { through: 0, throughput: 0, transfer: 0, mp: 0 });
     const flows: { a: number; b: number; f: number; path: number[] }[] = [];
     const totalPop = live.reduce((a, s) => a + s.pop, 0);
-    const c0 = 15;
+    // distance offset: gravity models overstate trade between near neighbours
+    const c0 = 25 + 3 * w.cellKm;
     const canalCands: { cells: number[]; f: number }[] = [];
 
     const addPath = (path: number[], f: number, endpoints: number[]) => {
@@ -607,7 +636,7 @@ export class Sim {
           if (k > 0 && path[k - 1] >= N) newTransfer[n] += f; // unloading
           if (k < path.length - 1 && path[k + 1] >= N) newTransfer[n] += f; // loading
           const sid = this.cellOwnerS[n];
-          if (sid >= 0 && !endpoints.includes(sid)) stats.get(sid)!.through += f;
+          if (sid >= 0 && !endpoints.includes(sid)) { const st = stats.get(sid); if (st) st.through += f; }
           prevLand = n;
           landRun.push(n);
         } else {
@@ -643,14 +672,26 @@ export class Sim {
       const res = this.pf.run(this.cm, this.overseasSources.map((c) => ({ node: N + c })));
       overseasDist = Float64Array.from(res.dist);
       overseasParent = Int32Array.from(res.parent);
-      const P = era.overseas * totalPop * 0.25;
+      const P = era.overseas * totalPop * 0.1;
       for (let a = 0; a < nodes.length; a++) {
         const c = overseasDist[nodes[a].cell];
         if (!isFinite(c)) continue;
         const f = (nodes[a].pop * P) / Math.pow(c + c0 + 40, 2);
-        stats.get(nodes[a].id)!.mp += P / (c + c0 + 40);
+        stats.get(nodes[a].id)!.mp += (0.3 * P) / (c + c0 + 40); // industry looks mostly to the home market
         flows.push({ a, b: -1, f, path: [] });
       }
+    }
+    // market potential for every other town, from the nodes' distance fields
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    for (const s of live) {
+      if (nodeIds.has(s.id) || (!s.market && s.origin === 'farming')) continue;
+      let mp = 0;
+      for (let a = 0; a < nodes.length; a++) {
+        const c = dists[a][s.cell];
+        if (isFinite(c)) mp += nodes[a].pop / (c + c0);
+      }
+      if (overseasDist && isFinite(overseasDist[s.cell])) mp += (0.3 * era.overseas * totalPop * 0.1) / (overseasDist[s.cell] + c0 + 40);
+      stats.get(s.id)!.mp = mp;
     }
     // normalise flow units to "people-equivalents" of traffic
     const sumF = flows.reduce((s, f) => s + f.f, 0) || 1;
@@ -700,7 +741,7 @@ export class Sim {
     let founded = 0;
     for (const o of orphan) {
       if (founded >= 1) break;
-      if (o.v < totalTransfer * 0.05 || o.v < totalPop * 0.004) break;
+      if (o.v < totalTransfer * 0.025 || o.v < totalPop * 0.003) break;
       if (this.tooClose(o.cell, 3)) continue;
       const coastal = this.isCoastal(o.cell);
       const e = this.evalSite(o.cell);
@@ -1022,7 +1063,10 @@ export class Sim {
     };
     // capital: chosen once a real city exists; it then attracts government
     if (this.capitalId < 0 && this.year >= 300) {
-      const cand = [...live].sort((a, b) => b.pop * (1 + (this.tradeStats.get(b.id)?.mp ?? 0) * 1e-5) - a.pop * (1 + (this.tradeStats.get(a.id)?.mp ?? 0) * 1e-5))[0];
+      // the seat of government goes to a big place that is also central to the
+      // whole population (high market potential), not merely the biggest
+      const score = (s: Settlement) => Math.sqrt(s.pop) * (this.tradeStats.get(s.id)?.mp ?? 0);
+      const cand = [...live].sort((a, b) => score(b) - score(a))[0];
       if (cand && cand.pop > 3000) {
         cand.capital = true;
         this.capitalId = cand.id;
@@ -1036,7 +1080,9 @@ export class Sim {
         comps.trade[s.id] = st.throughput;
         comps.transfer[s.id] = st.transfer;
         comps.through[s.id] = st.through;
-        if (era.weights.industry > 0) comps.industry[s.id] = st.mp * Math.pow(Math.max(1, s.pop), 0.35) * (s.rail || era.id < 3 ? 1 : 0.35);
+        // industry: access to markets x agglomeration (big places attract more firms)
+        // (proportional to size, as in Gibrat's law, tilted by market access)
+        if (era.weights.industry > 0) comps.industry[s.id] = Math.max(1, s.pop) * Math.pow(st.mp, 0.6) * (s.rail || era.id < 3 ? 1 : 0.35);
       }
       if (s.resourceId >= 0) {
         const r = this.w.resources.find((q) => q.id === s.resourceId);
@@ -1048,7 +1094,7 @@ export class Sim {
     const sums: Record<string, number> = {};
     for (const k of Object.keys(comps)) sums[k] = (comps as Record<string, Float64Array>)[k].reduce((a, v) => a + v, 0);
     const A = new Float64Array(this.settlements.length);
-    const gamma = [1.3, 1.25, 1.2, 1.1, 1.04][era.id];
+    const gamma = [1.3, 1.25, 1.18, 1.05, 1.0][era.id];
     let sumAg = 0;
     for (const s of live) {
       let a = 0;

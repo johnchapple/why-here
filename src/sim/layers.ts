@@ -26,6 +26,8 @@ export function computeLayers(t: TerrainInput, h: Hydro): Layers {
   // Distance to rivers (cells) and height above the nearby river: floodplains.
   const bigRiver = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (river[i] && discharge[i] >= qRiver * 2) bigRiver[i] = 1;
+  // Earth mode: mapped river channels (incl. delta distributaries) also water the land
+  if (t.riverBurn) for (let i = 0; i < N; i++) if (t.riverBurn[i] && !water[i]) bigRiver[i] = 1;
   const dRiver = distanceTo(bigRiver, W, H);
   // Local river level: blur of elevation over river cells only.
   const rivElev = new Float32Array(N), rivW = new Float32Array(N);
@@ -52,7 +54,9 @@ export function computeLayers(t: TerrainInput, h: Hydro): Layers {
     const tS = smoothstep(-3, 9, T) * (1 - smoothstep(29, 36, T));
     let mS = smoothstep(0.18, 0.75, ratio) * (1 - 0.35 * smoothstep(1.8, 3.5, ratio));
     const sS = 1 - smoothstep(0.015, 0.11, slope[i]);
-    const eS = 1 - smoothstep(1800, 3600, elev[i]);
+    const eS = 1 - smoothstep(3000, 4600, elev[i]);
+    // hot, very wet lowlands: leached soils and disease (the tropical rainforest problem)
+    const tropic = smoothstep(22, 27, T) * smoothstep(1.1, 2.2, ratio) * 0.65;
     // floodplain / alluvium: close to a river and only a little above it
     let flood = 0;
     if (dRiver[i] < 5 && rW[i] > 0.01) {
@@ -65,7 +69,7 @@ export function computeLayers(t: TerrainInput, h: Hydro): Layers {
     const alluvial = flood * 0.28;
     const m = flood * smoothstep(1.2, 2.5, ratio) * (1 - smoothstep(0.002, 0.01, slope[i]));
     marsh[i] = clamp(m * 0.8 + (dWater[i] < 2 && slope[i] < 0.002 && ratio > 1.3 ? 0.3 : 0), 0, 1);
-    fertility[i] = clamp(tS * mS * sS * eS * (0.85 + alluvial) + alluvial * tS * sS - marsh[i] * 0.25, 0, 1);
+    fertility[i] = clamp((tS * mS * sS * eS * (0.85 + alluvial) + alluvial * tS * sS) * (1 - tropic) - marsh[i] * 0.25, 0, 1);
     forest[i] = clamp(smoothstep(0.6, 1.3, ratio) * smoothstep(-4, 4, T) * (1 - smoothstep(2200, 3200, elev[i])) * (0.55 + 0.45 * smoothstep(0.01, 0.08, slope[i])), 0, 1);
   }
 

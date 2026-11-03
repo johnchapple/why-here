@@ -128,6 +128,20 @@ export function computeHydrology(t: TerrainInput, seed: number): Hydro {
     const x = i % W, y = (i / W) | 0;
     routing[i] += jitter * (nz.fbm(x / 7, y / 7, 3) + 1);
   }
+  // Rivers entering from off-map must not drain straight back over the edge:
+  // wall off the map edge around each inflow point.
+  if (t.inflow) {
+    for (const f of t.inflow) {
+      const fx = f.cell % W, fy = (f.cell / W) | 0;
+      const R = 25;
+      for (let y = Math.max(0, fy - R); y <= Math.min(H - 1, fy + R); y++) for (let x = Math.max(0, fx - R); x <= Math.min(W - 1, fx + R); x++) {
+        const edgeDist = Math.min(x, y, W - 1 - x, H - 1 - y);
+        if (edgeDist > 1 || water[y * W + x] === WATER_OCEAN) continue;
+        const i = y * W + x;
+        if (i !== f.cell) routing[i] = Math.max(routing[i], routing[f.cell] + 80);
+      }
+    }
+  }
   const filled = priorityFlood(W, H, routing, water);
 
   // Lakes from depressions (procedural mode) or from the mask (Earth mode).
