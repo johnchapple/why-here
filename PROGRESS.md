@@ -7,7 +7,7 @@
 - **M4 Tools & polish** — terrain brushes that keep history, overlays (sites, elevation, fertility, movement cost, village fields, market areas, trade flows, roads, founding era), chronicle and ticker, mobile layout.
 - **M5 Lessons** — six guided scenarios with live goal checks and real-world epilogues.
 - **M6 Earth Mode** — ten regions preprocessed from AWS Terrain Tiles + Natural Earth; scoring with a random-placement baseline; researched notes for ~150 cities.
-- **M7 Polish** — onboarding, help, README with screenshots, unit tests (19), GitHub Pages workflow.
+- **M7 Polish** — onboarding, help, README with screenshots, unit tests (19), GitHub Pages workflow, static-layer render cache (pan is a single blit; zoom re-renders after the wheel settles).
 
 ## Next / ideas
 - Speed: a full 1,600-year run takes ~10–17 s in the worker. A bucket-queue Dijkstra or coarser trade graph would help.
@@ -17,6 +17,7 @@
 - Save/share a world as a URL (seed + brush log).
 
 ## Known issues
-- Rendering of glyphs is per-frame; on very slow devices zooming with many mountains can drop below 60 fps.
+- A static-layer re-render takes ~20–40 ms (once per zoom step or snapshot); while history plays, snapshots arrive ~5×/s.
+- On phones the guide panel covers most of the map; close it (×) to explore.
 - The Yangtze and Rhine deltas split into many mapped channels, so the model’s main stem carries less water than reality.
 - Settlement names are generated in Earth Mode too (they are the model’s predictions, not the real towns).
