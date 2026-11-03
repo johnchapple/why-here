@@ -88,7 +88,7 @@ export const NOTES: Record<string, RegionNotes> = {
     tagline: 'River towns, a failed metropolis and the railway’s cities.',
     intro: 'The Mississippi and its great eastern tributary the Ohio carried the settlement of the American interior by flatboat and steamboat, until railways rewired the map after the 1850s.',
     watch: [
-      'Look at where the model puts its biggest city: often near the Ohio–Mississippi confluence at Cairo, Illinois. In the 1830s–50s promoters predicted exactly that: a great metropolis at the meeting of the rivers. Floods, swampy ground and the railway age left Cairo with fewer than 2,000 people in 2020 — the model shares the boosters’ mistake.',
+      'Check where the model puts its capital (★). If it lands near the Ohio–Mississippi confluence, the model is repeating a famous 19th-century prediction: promoters expected a great metropolis at Cairo, Illinois, where the two rivers meet. Floods, swampy ground and the railway age left Cairo with fewer than 2,000 people in 2020.',
       'River ports along the Ohio and the Mississippi, and towns at the falls and rapids.',
     ],
     limits: [
@@ -220,8 +220,8 @@ export const NOTES: Record<string, RegionNotes> = {
     tagline: 'Inland seas, portages and canals.',
     intro: 'The Great Lakes form a chain of inland seas reaching 1,500 km into the continent. Where the lakes connect, or where a short carry led to another river system, towns grew.',
     watch: [
-      'Ports at the river mouths and straits: Detroit on the strait between Lakes Huron and Erie.',
-      'The model often puts a big city on the Illinois River in northern Illinois — the route of the Illinois and Michigan Canal (1848), whose western end was LaSalle–Peru. History chose the canal’s lake end instead: Chicago.',
+      'The strait between Lake Huron and Lake Erie (Detroit): every ship between the upper and lower lakes must pass it.',
+      'The Illinois River route to the Mississippi: the Illinois and Michigan Canal (1848) ran from Chicago to LaSalle–Peru. Does the model favour the canal’s river end or its lake end?',
     ],
     limits: [
       'Most of the region’s trade ran to the Atlantic (via the Erie Canal from 1825 and the St. Lawrence), far beyond this map, so the model underrates the lake ports that handled it.',

@@ -173,7 +173,7 @@ export class Sim {
     this.growRural();
     this.foundVillages();
     if (this.steps % 3 === 0) this.updateMarkets(false);
-    if (this.steps % (this.era === 0 ? 8 : 6) === 0) this.updateTrade();
+    if (this.steps % (this.era === 0 ? 10 : 7) === 0) this.updateTrade();
     if (this.era >= 3 && this.steps % 2 === 0) this.buildRail();
     if (this.steps % 3 === 0) this.foundResourceTowns();
     this.updatePopulations();
@@ -1093,13 +1093,17 @@ export class Sim {
     }
     const sums: Record<string, number> = {};
     for (const k of Object.keys(comps)) sums[k] = (comps as Record<string, Float64Array>)[k].reduce((a, v) => a + v, 0);
+    // the extractive sector is a share of the economy only if there is a lot
+    // to extract: with just a few deposits each mine stays a mine, not a metropolis
+    const nMines = live.filter((s) => s.resourceId >= 0).length;
+    const weights = { ...era.weights, resource: era.weights.resource * Math.min(1, nMines / 12) };
     const A = new Float64Array(this.settlements.length);
     const gamma = [1.3, 1.25, 1.18, 1.05, 1.0][era.id];
     let sumAg = 0;
     for (const s of live) {
       let a = 0;
       for (const k of Object.keys(comps) as (keyof typeof comps)[]) {
-        if (sums[k] > 0) a += era.weights[k] * comps[k][s.id] / sums[k];
+        if (sums[k] > 0) a += weights[k] * comps[k][s.id] / sums[k];
       }
       A[s.id] = a;
       sumAg += Math.pow(a, gamma);
@@ -1113,7 +1117,7 @@ export class Sim {
       // growth breakdown (people attributable to each driver)
       s.growth.farming = s.ruralPop;
       for (const k of Object.keys(comps) as (keyof typeof comps)[]) {
-        s.growth[k] = a > 0 && sums[k] > 0 ? urban * (era.weights[k] * comps[k][s.id] / sums[k]) / a : 0;
+        s.growth[k] = a > 0 && sums[k] > 0 ? urban * (weights[k] * comps[k][s.id] / sums[k]) / a : 0;
       }
       // farm families live spread over the fields: a place's rank comes from its built-up core
       const newTier = tierOf(s.pop - 0.75 * s.ruralPop);

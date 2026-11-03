@@ -25,6 +25,7 @@ export interface ModeController {
   onOverlay?(o: OverlayKind): void;
   onSelect?(s: Settlement | null): void;
   onTab?(t: Tab): void;
+  inspectorExtra?(s: Settlement): HTMLElement | null;
   leave?(): void;
 }
 
@@ -453,6 +454,8 @@ export class App {
       }
       return;
     }
+    const extra = this.mode?.inspectorExtra?.(this.selected);
+    if (extra) body.appendChild(extra);
     body.appendChild(renderInspector(this.selected, this.snap, {
       onSelect: (id) => this.select(this.snap!.settlements[id], true),
       onZoom: (s) => this.renderer.flyTo(s.x, s.y, Math.max(this.renderer.cam.zoom, 8)),

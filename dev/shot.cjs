@@ -3,7 +3,8 @@ const { chromium } = require('playwright');
 (async () => {
   const [url, out, actsJson, vw, vh] = process.argv.slice(2);
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: +(vw || 1440), height: +(vh || 900) }, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: { width: +(vw || 1440), height: +(vh || 900) }, deviceScaleFactor: +(process.env.DSF || 1) });
+  await page.addInitScript(() => { try { localStorage.setItem('why-here:onboarded', '1'); } catch {} });
   const logs = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(m.type() + ': ' + m.text()); });
   page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
@@ -16,7 +17,7 @@ const { chromium } = require('playwright');
     if (a.waitFor) await page.waitForFunction(a.waitFor, null, { timeout: 180000 });
     if (a.click) await page.click(a.click);
     if (a.mouse) await page.mouse.click(a.mouse[0], a.mouse[1]);
-    if (a.shot) await page.screenshot({ path: a.shot });
+    if (a.shot) await page.screenshot({ path: a.shot, ...(a.shot.endsWith('.jpg') ? { type: 'jpeg', quality: 82 } : {}) });
   }
   await page.waitForTimeout(400);
   await page.screenshot({ path: out });

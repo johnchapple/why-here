@@ -153,6 +153,9 @@ export class Pathfinder {
   label: Int32Array;
   heap: MinHeap;
   off: Int32Array;
+  private touched: Int32Array;
+  private nTouched = 0;
+  private touchedAll = true;
   constructor(w: World) {
     this.w = w;
     this.N = w.N;
@@ -160,6 +163,7 @@ export class Pathfinder {
     this.parent = new Int32Array(2 * w.N);
     this.label = new Int32Array(2 * w.N);
     this.heap = new MinHeap(4096);
+    this.touched = new Int32Array(2 * w.N);
     this.off = new Int32Array(8);
     for (let k = 0; k < 8; k++) this.off[k] = DY[k] * w.W + DX[k];
   }
@@ -168,14 +172,20 @@ export class Pathfinder {
     const N = this.N;
     const water = this.w.water;
     const dist = this.dist, parent = this.parent, label = this.label, off = this.off;
-    dist.fill(Infinity);
-    parent.fill(-1);
-    label.fill(-1);
+    // reset only what the previous search touched (cheap for local searches)
+    if (this.touchedAll) { dist.fill(Infinity); parent.fill(-1); label.fill(-1); }
+    else for (let k = 0; k < this.nTouched; k++) { const n = this.touched[k]; dist[n] = Infinity; parent[n] = -1; label[n] = -1; }
+    this.nTouched = 0; this.touchedAll = false;
+    let touched = this.touched, nT = 0;
+    const cap = touched.length;
     const heap = this.heap;
     heap.clear();
     for (const s of sources) {
       const c = s.cost ?? 0;
-      if (c < dist[s.node]) { dist[s.node] = c; label[s.node] = s.label ?? s.node; heap.push(c, s.node); }
+      if (c < dist[s.node]) {
+        if (dist[s.node] === Infinity) { if (nT < cap) touched[nT++] = s.node; else this.touchedAll = true; }
+        dist[s.node] = c; label[s.node] = s.label ?? s.node; heap.push(c, s.node);
+      }
     }
     const { landEdge, waterEdge, embark, wnode, xfer } = cm;
     const landOnly = !!opts.landOnly;
@@ -192,18 +202,18 @@ export class Pathfinder {
           if (e === Infinity) continue;
           const v = c + off[k];
           const nd = du + e;
-          if (nd < dist[v] && nd <= maxCost) { dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
+          if (nd < dist[v] && nd <= maxCost) { if (dist[v] === Infinity) { if (nT < cap) touched[nT++] = v; else this.touchedAll = true; } dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
         }
         if (!landOnly) {
           if (wnode[c]) {
             const v = N + c, nd = du + xfer[c];
-            if (nd < dist[v] && nd <= maxCost) { dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
+            if (nd < dist[v] && nd <= maxCost) { if (dist[v] === Infinity) { if (nT < cap) touched[nT++] = v; else this.touchedAll = true; } dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
           } else {
             for (let k = 0; k < 8; k++) {
               const e = embark[base + k];
               if (e === Infinity) continue;
               const v = N + c + off[k], nd = du + e;
-              if (nd < dist[v] && nd <= maxCost) { dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
+              if (nd < dist[v] && nd <= maxCost) { if (dist[v] === Infinity) { if (nT < cap) touched[nT++] = v; else this.touchedAll = true; } dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
             }
           }
         }
@@ -213,11 +223,11 @@ export class Pathfinder {
           const e = waterEdge[base + k];
           if (e === Infinity) continue;
           const v = u + off[k], nd = du + e;
-          if (nd < dist[v] && nd <= maxCost) { dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
+          if (nd < dist[v] && nd <= maxCost) { if (dist[v] === Infinity) { if (nT < cap) touched[nT++] = v; else this.touchedAll = true; } dist[v] = nd; parent[v] = u; label[v] = lu; heap.push(nd, v); }
         }
         if (water[c] === WATER_LAND) {
           const nd = du + xfer[c];
-          if (nd < dist[c] && nd <= maxCost) { dist[c] = nd; parent[c] = u; label[c] = lu; heap.push(nd, c); }
+          if (nd < dist[c] && nd <= maxCost) { if (dist[c] === Infinity) { if (nT < cap) touched[nT++] = c; else this.touchedAll = true; } dist[c] = nd; parent[c] = u; label[c] = lu; heap.push(nd, c); }
         } else {
           // disembark onto the coast: reverse of embark (edge from land n toward c)
           for (let k = 0; k < 8; k++) {
@@ -226,11 +236,13 @@ export class Pathfinder {
             const e = embark[n * 8 + OPP[k]];
             if (e === Infinity) continue;
             const nd = du + e;
-            if (nd < dist[n] && nd <= maxCost) { dist[n] = nd; parent[n] = u; label[n] = lu; heap.push(nd, n); }
+            if (nd < dist[n] && nd <= maxCost) { if (dist[n] === Infinity) { if (nT < cap) touched[nT++] = n; else this.touchedAll = true; } dist[n] = nd; parent[n] = u; label[n] = lu; heap.push(nd, n); }
           }
         }
       }
     }
+    this.nTouched = nT;
+    void touched;
     return { dist, parent, label };
   }
 

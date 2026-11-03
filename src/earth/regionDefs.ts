@@ -29,7 +29,7 @@ export const REGION_DEFS: RegionDef[] = [
     resources: [{ kind: 'coal', lon: 7.2, lat: 51.48, name: 'Ruhr coalfield' }, { kind: 'coal', lon: 7.0, lat: 49.25, name: 'Saar coalfield' }, { kind: 'ore', lon: 6.1, lat: 49.4, name: 'Lorraine iron ore (minette)' }],
   },
   {
-    id: 'missohio', name: 'The Mississippi and the Ohio', bbox: [-92.6, 29.0, -79.6, 42.1], maxCells: 320, precipScale: 1, precipBase: 1200, wind: 'none', riverRank: 8,
+    id: 'missohio', name: 'The Mississippi and the Ohio', bbox: [-92.6, 29.0, -82.0, 42.1], maxCells: 320, precipScale: 1, precipBase: 1200, wind: 'none', riverRank: 8,
     inflows: [
       { name: 'Upper Mississippi', lon: -91.2, lat: 42.05, q: 2000 },
       { name: 'Missouri', lon: -92.55, lat: 38.7, q: 2000 },

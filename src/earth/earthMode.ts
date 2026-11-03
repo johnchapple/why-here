@@ -162,6 +162,11 @@ export function earthMode(app: App): ModeController {
     onSnapshot(s) {
       if (!running && region && result && s.year >= END_YEAR) rescore(s);
     },
+    inspectorExtra(s) {
+      if (!meta) return null;
+      const real = realCounterpart(meta, s);
+      return h('div', { class: 'goal', style: 'margin-top:0' }, h('b', {}, 'Model town. '), real ? `The nearest real city is ${real}.` : 'No real city of note within 40 km — a place the model expected but history did not build (or built small).');
+    },
     leave() {
       token++;
       region = null; result = null; meta = null;

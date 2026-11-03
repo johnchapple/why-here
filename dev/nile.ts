@@ -2,7 +2,7 @@ import fs from 'fs'; import zlib from 'zlib';
 import { buildWorld } from '../src/sim/world';
 import { REGION_DEFS } from '../src/earth/regionDefs';
 import type { TerrainInput } from '../src/sim/grid';
-const id='nile';
+const id=process.argv[2]??'nile';
 const meta = JSON.parse(fs.readFileSync(`public/regions/${id}.json`, 'utf8'));
 const buf = zlib.gunzipSync(fs.readFileSync(`public/regions/${id}.bin.gz`));
 const N = meta.W*meta.H; const elev = new Float32Array(N); const mask = Uint8Array.from(buf.subarray(N*2,N*3)); const burn = Uint8Array.from(buf.subarray(N*3,N*4));
@@ -12,5 +12,5 @@ const t: TerrainInput = { W: meta.W, H: meta.H, cellKm: meta.cellKm, elev, latTo
 const w = buildWorld(t, 42, true);
 console.log('inflow', meta.inflows, 'W', meta.W);
 let c = meta.inflows[0].cell; let k=0;
-while (c >= 0 && k < 400) { if (k%10===0) console.log(k, c%meta.W, Math.floor(c/meta.W), 'e', w.elev[c].toFixed(0), 'filled', w.filled[c].toFixed(1), 'Q', w.discharge[c].toFixed(0), 'water', w.water[c], 'river', w.river[c]); c = w.flowDir[c]; k++; }
+while (c >= 0 && k < 900) { if (k%25===0) console.log(k, c%meta.W, Math.floor(c/meta.W), 'e', w.elev[c].toFixed(0), 'filled', w.filled[c].toFixed(1), 'Q', w.discharge[c].toFixed(0), 'water', w.water[c], 'river', w.river[c]); c = w.flowDir[c]; k++; }
 console.log('end', c, k);

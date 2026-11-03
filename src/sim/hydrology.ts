@@ -75,14 +75,14 @@ export function computeWaterMask(t: TerrainInput): Uint8Array {
  * cell has a strictly lower neighbour: water always drains to the sea or
  * off the map edge, never gets stuck in a pit.
  */
-export function priorityFlood(W: number, H: number, elev: Float32Array, water: Uint8Array, eps = 0.01): Float32Array {
+export function priorityFlood(W: number, H: number, elev: Float32Array, water: Uint8Array, eps = 0.01, edgeOutlet?: Uint8Array): Float32Array {
   const N = W * H;
   const filled = new Float32Array(N);
   const done = new Uint8Array(N);
   const heap = new MinHeap(N);
   for (let i = 0; i < N; i++) {
     const x = i % W, y = (i / W) | 0;
-    const edge = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+    const edge = (x === 0 || y === 0 || x === W - 1 || y === H - 1) && (!edgeOutlet || edgeOutlet[i] === 1);
     if (water[i] === WATER_OCEAN || edge) {
       filled[i] = water[i] === WATER_OCEAN ? Math.min(elev[i], 0) : elev[i];
       done[i] = 1;
@@ -142,7 +142,34 @@ export function computeHydrology(t: TerrainInput, seed: number): Hydro {
       }
     }
   }
-  const filled = priorityFlood(W, H, routing, water);
+  // Earth mode: water may only leave the frame where a mapped river does
+  // (or at the sea); elsewhere the frame is a cut through hills, not an outlet.
+  let edgeOutlet: Uint8Array | undefined;
+  if (t.riverBurn) {
+    edgeOutlet = new Uint8Array(N);
+    let any = false;
+    // a mapped river crossing the frame is an outlet only if it flows outward:
+    // lower at the edge than along its course just inside
+    const rb = t.riverBurn;
+    const isOutlet = (ex: number, ey: number) => {
+      const e = work[ey * W + ex];
+      let sum = 0, n = 0;
+      for (let oy = -8; oy <= 8; oy++) for (let ox = -8; ox <= 8; ox++) {
+        const x = ex + ox, y = ey + oy;
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        if (Math.min(x, y, W - 1 - x, H - 1 - y) < 3 || !rb[y * W + x] || water[y * W + x]) continue;
+        sum += work[y * W + x]; n++;
+      }
+      return n === 0 || e < sum / n - 3;
+    };
+    const mark = (x: number, y: number) => { const i = y * W + x; if (rb[i] && isOutlet(x, y)) { edgeOutlet![i] = 1; any = true; } };
+    for (let x = 0; x < W; x++) { mark(x, 0); mark(x, H - 1); }
+    for (let y = 0; y < H; y++) { mark(0, y); mark(W - 1, y); }
+    let ocean = false;
+    for (let i = 0; i < N; i++) if (water[i] === WATER_OCEAN) { ocean = true; break; }
+    if (!any && !ocean) edgeOutlet = undefined;
+  }
+  const filled = priorityFlood(W, H, routing, water, 0.01, edgeOutlet);
 
   // Lakes from depressions (procedural mode) or from the mask (Earth mode).
   if (!t.waterMask) {
