@@ -61,6 +61,7 @@ export class Renderer {
     const r = this.canvas.getBoundingClientRect();
     this.canvas.width = Math.max(1, Math.round(r.width * this.dpr));
     this.canvas.height = Math.max(1, Math.round(r.height * this.dpr));
+    this.cacheDirty = true;
     this.invalidate();
   }
 
@@ -72,20 +73,20 @@ export class Renderer {
     this.base = bakeBasemap(w);
     if (fit) this.fit();
     this.rebuildOverlay();
-    this.invalidate();
+    this.invalidateStatic();
   }
 
   setSnapshot(s: SimSnapshot | null) {
     this.snap = s;
     this.buildRoads();
     if (this.overlay !== 'none' && this.overlay !== 'trade') this.rebuildOverlay();
-    this.invalidate();
+    this.invalidateStatic();
   }
 
   setOverlay(o: OverlayKind) {
     this.overlay = o;
     this.rebuildOverlay();
-    this.invalidate();
+    this.invalidateStatic();
   }
 
   borderPath: Path2D | null = null;
@@ -209,20 +210,55 @@ export class Renderer {
     if (s.railEdges.length) this.railPath = edgesToPath(Array.from(s.railEdges), W);
   }
 
-  draw() {
-    const ctx = this.ctx;
-    const w = this.world, b = this.base;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#2b2118';
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    if (!w || !b) return;
+  // ---- static layer cache: everything that only changes with the world,
+  // the snapshot (roads) or the overlay is drawn once per zoom level into an
+  // offscreen canvas and blitted while panning.
+  private cache: { canvas: HTMLCanvasElement; zoom: number; ox: number; oy: number; ew: number; eh: number } | null = null;
+  private cacheDirty = true;
+  private zoomTimer = 0;
+  private lastZoom = 0;
+
+  invalidateStatic() { this.cacheDirty = true; this.invalidate(); }
+
+  private ensureCache(): void {
     const { cx, cy, zoom } = this.cam;
     const dpr = this.dpr;
-    const tx = this.viewW / 2 - cx * zoom, ty = this.viewH / 2 - cy * zoom;
-    const setWorld = () => ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * tx, dpr * ty);
-    const px = 1 / zoom; // one screen pixel in cell units
+    const vw = this.viewW / zoom, vh = this.viewH / zoom; // view extent in cells
+    const c = this.cache;
+    const covers = c && cx - vw / 2 >= c.ox && cy - vh / 2 >= c.oy && cx + vw / 2 <= c.ox + c.ew && cy + vh / 2 <= c.oy + c.eh;
+    if (c && !this.cacheDirty && c.zoom === zoom && covers) return;
+    if (c && !this.cacheDirty && c.zoom !== zoom) {
+      // zooming: show the scaled cache now and re-render once the wheel settles
+      if (zoom !== this.lastZoom) {
+        this.lastZoom = zoom;
+        clearTimeout(this.zoomTimer);
+        this.zoomTimer = window.setTimeout(() => { this.cacheDirty = true; this.invalidate(); }, 140);
+      }
+      const scaledCovers = covers || (c.ew * c.zoom >= this.viewW * 0.9 && c.eh * c.zoom >= this.viewH * 0.9 && zoom > c.zoom * 0.8);
+      if (scaledCovers) return;
+    }
+    // (re)build
+    const pw = Math.min(4096, Math.ceil(this.viewW * dpr * 1.6)), ph = Math.min(4096, Math.ceil(this.viewH * dpr * 1.6));
+    const ew = pw / (dpr * zoom), eh = ph / (dpr * zoom);
+    const canvas = c?.canvas ?? document.createElement('canvas');
+    canvas.width = pw; canvas.height = ph;
+    const cctx = canvas.getContext('2d')!;
+    const ox = cx - ew / 2, oy = cy - eh / 2;
+    cctx.setTransform(1, 0, 0, 1, 0, 0);
+    cctx.clearRect(0, 0, pw, ph);
+    cctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -ox * dpr * zoom, -oy * dpr * zoom);
+    const main = this.ctx;
+    this.ctx = cctx;
+    try { this.drawStatic(zoom, ox - 5, ox + ew + 5, oy - 5, oy + eh + 5); } finally { this.ctx = main; }
+    this.cache = { canvas, zoom, ox, oy, ew, eh };
+    this.cacheDirty = false;
+    this.lastZoom = zoom;
+  }
 
-    setWorld();
+  private drawStatic(zoom: number, vx0: number, vx1: number, vy0: number, vy1: number) {
+    const ctx = this.ctx;
+    const w = this.world!, b = this.base!;
+    const px = 1 / zoom; // one screen pixel in cell units
     // shadow under the sheet
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(0.6 * px * 6, 0.6 * px * 6, w.W, w.H);
@@ -242,10 +278,6 @@ export class Renderer {
       ctx.stroke(this.borderPath);
       ctx.setLineDash([]);
     }
-
-    // view bounds in cell units for culling
-    const vx0 = cx - this.viewW / 2 / zoom - 5, vx1 = cx + this.viewW / 2 / zoom + 5;
-    const vy0 = cy - this.viewH / 2 / zoom - 5, vy1 = cy + this.viewH / 2 / zoom + 5;
 
     // trees (stipple)
     ctx.lineWidth = Math.max(0.05, 0.7 * px);
@@ -303,17 +335,40 @@ export class Renderer {
       ctx.stroke(this.railPath);
       ctx.setLineDash([]);
     }
+    // frame
+    this.drawFrame(px);
+  }
 
-    // trade flows
+  draw() {
+    const ctx = this.ctx;
+    const w = this.world, b = this.base;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#2b2118';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    if (!w || !b) return;
+    const { cx, cy, zoom } = this.cam;
+    const dpr = this.dpr;
+    const tx = this.viewW / 2 - cx * zoom, ty = this.viewH / 2 - cy * zoom;
+    const px = 1 / zoom;
+
+    this.ensureCache();
+    const c = this.cache!;
+    const s = zoom / c.zoom;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(c.canvas, dpr * ((c.ox - cx) * zoom + this.viewW / 2), dpr * ((c.oy - cy) * zoom + this.viewH / 2), c.canvas.width * s, c.canvas.height * s);
+
+    // view bounds in cell units for culling
+    const vx0 = cx - this.viewW / 2 / zoom - 5, vx1 = cx + this.viewW / 2 / zoom + 5;
+    const vy0 = cy - this.viewH / 2 / zoom - 5, vy1 = cy + this.viewH / 2 / zoom + 5;
+
+    ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * tx, dpr * ty);
+    // trade flows (animated)
     if (this.overlay === 'trade' && this.snap) this.drawFlows(px);
 
     if (this.highlightCells) {
       ctx.fillStyle = this.highlightCells.color;
-      for (const c of this.highlightCells.cells) ctx.fillRect(c % w.W, Math.floor(c / w.W), 1, 1);
+      for (const hc of this.highlightCells.cells) ctx.fillRect(hc % w.W, Math.floor(hc / w.W), 1, 1);
     }
-
-    // frame
-    this.drawFrame(px);
 
     // hydro feature markers in "sites" overlay
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -543,7 +598,7 @@ export class Renderer {
     const zoom = this.cam.zoom;
     for (const r of b.riverLabelPaths) {
       if (r.q < w.qNav * 1.2 && zoom < 5) continue;
-      const pts = chaikin(r.pts, 3);
+      const pts = r.pts;
       // take a stretch around 55% downstream
       const n = pts.length / 2;
       const text = (`River ${r.name}`).split('').join(' ');

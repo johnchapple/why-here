@@ -145,7 +145,7 @@ export function bakeBasemap(w: World): Basemap {
     rivers: buildRivers(w),
     glyphs: buildGlyphs(w),
     trees: buildTrees(w),
-    riverLabelPaths: w.rivers.map((r) => ({ name: r.name, q: r.q, pts: r.cells.flatMap((c) => [(c % W) + 0.5, Math.floor(c / W) + 0.5]) })),
+    riverLabelPaths: w.rivers.map((r) => ({ name: r.name, q: r.q, pts: chaikin(r.cells.flatMap((c) => [(c % W) + 0.5, Math.floor(c / W) + 0.5]), 3) })),
   };
 }
 

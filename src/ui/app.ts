@@ -406,6 +406,12 @@ export class App {
       [dot('width:16px;height:0;border-top:2px solid #9a3b26'), 'road'],
       [dot('width:16px;height:3px;background:repeating-linear-gradient(90deg,#1f1a16 0 4px,#f3e9cf 4px 8px);border:1px solid #1f1a16'), 'railway'],
     ];
+    if (this.overlay === 'sites') {
+      const sym: [string, string, string][] = [['Y', '#6a2d7a', 'confluence'], ['⚓', '#1d4f7a', 'river mouth'], ['≋', '#a1311e', 'falls'], ['⊣', '#a1311e', 'head of navigation'], ['⇋', '#2d6a3a', 'ford'], ['⋀', '#5b3b1b', 'pass']];
+      items.length = 0;
+      for (const [g, c, t] of sym) items.push([h('b', { style: `color:${c};font-family:var(--serif)` }, g), t]);
+      items.push([h('b', {}, 'Fe C S Au'), 'resources']);
+    }
     if (this.overlay === 'eras') {
       ['#7b5a2e', '#2f6f6a', '#3c5a99', '#8e2f2f', '#5d3f8c'].forEach((c, i) => items.push([dot(`width:9px;height:9px;border-radius:50%;background:${c}`), ERAS[i].name]));
     }
